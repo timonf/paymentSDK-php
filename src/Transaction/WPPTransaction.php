@@ -52,6 +52,11 @@ class WPPTransaction extends Transaction implements Reservable
     private $config;
 
     /**
+     * @var Mandate
+     */
+    private $mandate;
+
+    /**
      * @param WPPConfig $config
      * @return WPPTransaction
      * @since 3.5.0
@@ -72,6 +77,14 @@ class WPPTransaction extends Transaction implements Reservable
     }
 
     /**
+     * @param Mandate $mandate
+     */
+    public function setMandate($mandate)
+    {
+        $this->mandate = $mandate;
+    }
+
+    /**
      * @throws MandatoryFieldMissingException|UnsupportedOperationException
      * @return array
      * @since 3.5.0
@@ -79,6 +92,9 @@ class WPPTransaction extends Transaction implements Reservable
     protected function mappedSpecificProperties()
     {
         $data = [];
+        if (null !== $this->mandate) {
+            $data['mandate'] = $this->mandate->mappedProperties();
+        }
         return $data;
     }
 

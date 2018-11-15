@@ -32,6 +32,7 @@
 namespace Wirecard\PaymentSdk\Response;
 
 use Wirecard\PaymentSdk\Entity\AccountHolder;
+use Wirecard\PaymentSdk\Entity\Address;
 use Wirecard\PaymentSdk\Entity\Amount;
 use Wirecard\PaymentSdk\Entity\Basket;
 use Wirecard\PaymentSdk\Entity\Card;
@@ -50,12 +51,17 @@ use Wirecard\PaymentSdk\TransactionService;
  */
 class JsonResponse implements ResponseInterface
 {
-	const FORMAT = 'json';
+    const FORMAT = 'json';
 
     /**
      * @var string
      */
     protected $json;
+
+    /**
+     * @var string
+     */
+    protected $payment;
 
     /**
      * Response constructor.
@@ -65,6 +71,9 @@ class JsonResponse implements ResponseInterface
     public function __construct($json)
     {
         $this->json = $json;
+        if (isset($json->{'payment'})) {
+            $this->payment = $json->{'payment'};
+        }
     }
 
     /**
@@ -84,7 +93,7 @@ class JsonResponse implements ResponseInterface
             );
         } else {
             $collection = $this->processStatusCollectionFromStatuses(
-                $this->json->{'payment'}->{'statuses'},
+                $this->payment->{'statuses'},
                 $collection
             );
         }
@@ -153,8 +162,8 @@ class JsonResponse implements ResponseInterface
     public function getRequestedAmount()
     {
         return new Amount(
-            $this->json->{'payment'}->{'requested-amount'}->{'value'},
-            $this->json->{'payment'}->{'requested-amount'}->{'currency'}
+            $this->payment->{'requested-amount'}->{'value'},
+            $this->payment->{'requested-amount'}->{'currency'}
         );
     }
 
@@ -187,30 +196,69 @@ class JsonResponse implements ResponseInterface
      */
     private function getAccountHolderFromJson($from = 'account-holder')
     {
-	    $accountHolderFields = array (
-		    'first-name' => 'setFirstName',
-		    'last-name' => 'setLastName',
-		    'email' => 'setEmail',
-		    'phone' => 'setPhone',
-		    'address' => 'setAddress',
-		    'crmid' => 'setCrmId',
-		    'date-of-birth' => 'setDateOfBirth',
-		    'gender' => 'setGender',
-		    'shipping' => 'setShippingMethod',
-		    'social-security-number' => 'setSocialSecurityNumber' //is newer send back by WPP
-	    );
+        $accountHolderFields = array(
+            'first-name' => 'setFirstName',
+            'last-name' => 'setLastName',
+            'email' => 'setEmail',
+            'phone' => 'setPhone',
+            'address' => 'setAddress',
+            'crmid' => 'setCrmId',
+            'date-of-birth' => 'setDateOfBirth',
+            'gender' => 'setGender',
+            'shipping' => 'setShippingMethod',
+            'social-security-number' => 'setSocialSecurityNumber' //is newer send back by WPP
+        );
 
-	    if (isset($this->json->{'payment'}->{$from})) {
-		    $accountHolder = new AccountHolder();
-		    foreach ($accountHolderFields as $property => $setter) {
-			    if (isset($this->json->{'payment'}->{$from}->{$property})) {
-				    $accountHolder->{$setter}($this->json->{'payment'}->{'account-holder'}->{$property});
-			    }
-		    }
-		    return $accountHolder;
-	    }
+        if (isset($this->payment->{$from})) {
+            $accountHolder = new AccountHolder();
+            foreach ($accountHolderFields as $property => $setter) {
+                if (isset($this->payment->{$from}->{$property})) {
+                    if ($property == 'address') {
+                        $accountHolder->{$setter}($this->getAddressFromAccountHolderJson($property));
+                    } else {
+                        $accountHolder->{$setter}($this->payment->{'account-holder'}->{$property});
+                    }
+                }
+            }
+            return $accountHolder;
+        }
 
-	    return null;
+        return null;
+    }
+
+    /**
+     * Get Address Entity for json element
+     *
+     * @param string $addressJson
+     * @return null|Address
+     * @since 3.5.0
+     */
+    private function getAddressFromAccountHolderJson($addressJson)
+    {
+        $addressFields = array(
+            'street2' => 'setStreet2',
+            'state' => 'setState',
+            'postal-code' => 'setPostalCode',
+            'house-extension' => 'setHouseExtension'
+        );
+        $mandatoryAddress = array(
+            'street1',
+            'city',
+            'country'
+        );
+
+        foreach ($mandatoryAddress as $mandatoryField) {
+            if (!isset($addressJson->{$mandatoryField})) {
+                return null;
+            }
+        }
+        $address = new Address($addressJson->{'country'}, $addressJson->{'city'}, $addressJson->{'street1'});
+        foreach ($addressFields as $property => $setter) {
+            if (isset($addressJson->{$property})) {
+                $address->{$setter}($addressJson->{$property});
+            }
+        }
+        return $address;
     }
 
     /**
@@ -221,15 +269,15 @@ class JsonResponse implements ResponseInterface
     {
         $customFields = new CustomFieldCollection();
 
-	    if (isset($this->json->{'payment'}->{'custom-fields'})) {
-		    foreach ($this->json->{'payment'}->{'custom-fields'}->{'custom-field'} as $field) {
-		    	if (isset($field->{'field-name'}) && isset($field->{'field-value'})) {
-		    		$name = substr((string) $field->{'field-name'}, strlen(CustomField::PREFIX));
-		    		$value = $field->{'field-value'};
-		    		$customFields->add(new CustomField($name, $value));
-			    }
-		    }
-	    }
+        if (isset($this->payment->{'custom-fields'})) {
+            foreach ($this->payment->{'custom-fields'}->{'custom-field'} as $field) {
+                if (isset($field->{'field-name'}) && isset($field->{'field-value'})) {
+                    $name = substr((string)$field->{'field-name'}, strlen(CustomField::PREFIX));
+                    $value = $field->{'field-value'};
+                    $customFields->add(new CustomField($name, $value));
+                }
+            }
+        }
 
         return $customFields;
     }
@@ -241,11 +289,11 @@ class JsonResponse implements ResponseInterface
      */
     public function findElement($element)
     {
-        if (isset($this->json->{'payment'}->{$element})) {
-            if (is_object($this->json->{'payment'}->{$element})) {
-                return (string)$this->json->{'payment'}->{$element}->{'value'};
+        if (isset($this->payment->{$element})) {
+            if (is_object($this->payment->{$element})) {
+                return (string)$this->payment->{$element}->{'value'};
             } else {
-                return (string)$this->json->{'payment'}->{$element};
+                return (string)$this->payment->{$element};
             }
         }
 
@@ -260,8 +308,8 @@ class JsonResponse implements ResponseInterface
      */
     public function getValueFromJson($entity, $property)
     {
-        if (isset($this->json->{'payment'}->{$entity}->{$property})) {
-            return $this->json->{'payment'}->{$entity}->{$property};
+        if (isset($this->payment->{$entity}->{$property})) {
+            return $this->payment->{$entity}->{$property};
         }
 
         return null;
@@ -275,7 +323,7 @@ class JsonResponse implements ResponseInterface
     public function findProviderTransactionId()
     {
         $result = [];
-        foreach ($this->json->{'payment'}->{'statuses'}->{'status'} as $status) {
+        foreach ($this->payment->{'statuses'}->{'status'} as $status) {
             if (isset($status->{'provider-transaction-id'})) {
                 $result[] = $status->{'provider-transaction-id'};
             }
@@ -288,36 +336,36 @@ class JsonResponse implements ResponseInterface
      * @return mixed
      * @since 3.5.0
      */
-	public function getCard()
-	{
-		if (isset($this->json->{'payment'}->{'card-token'})) {
-			return $this->json->{'payment'}->{'card-token'};
-		}
-	}
+    public function getCard()
+    {
+        if (isset($this->payment->{'card-token'})) {
+            return $this->payment->{'card-token'};
+        }
+    }
 
     /**
      * @return mixed
      * @since 3.5.0
      */
-	public function getBasketData()
-	{
-		if (isset($this->json->{'payment'}->{'order-items'}->{'order-item'}) && count($this->json->{'payment'}->{'order-items'}->{'order-item'}) > 0) {
-			return $this->json->{'payment'}->{'order-items'}->{'order-item'};
-		}
-		return null;
-	}
+    public function getBasketData()
+    {
+        if (isset($this->payment->{'order-items'}->{'order-item'}) && count($this->payment->{'order-items'}->{'order-item'}) > 0) {
+            return $this->payment->{'order-items'}->{'order-item'};
+        }
+        return null;
+    }
 
     /**
      * @return mixed
      * @since 3.5.0
      */
-	public function getPaymentMethod()
-	{
-	    if (isset($this->json->{'payment'})) {
-            return $this->json->{'payment'}->{'payment-methods'}->{'payment-method'}[0]->{'name'};
+    public function getPaymentMethod()
+    {
+        if (isset($this->payment)) {
+            return $this->payment->{'payment-methods'}->{'payment-method'}[0]->{'name'};
         }
         return 'wpp';
-	}
+    }
 
     /**
      * Get response format
@@ -325,37 +373,37 @@ class JsonResponse implements ResponseInterface
      * @return string
      * @since 3.5.0
      */
-	public function getFormat()
-	{
-		return $this::FORMAT;
-	}
+    public function getFormat()
+    {
+        return $this::FORMAT;
+    }
 
     /**
      * @return mixed
      * @since 3.5.0
      */
-	public function getDataForDetails()
-	{
-		$response = $this->json->{'payment'};
-		if (!is_string($response->{'merchant-account-id'})) {
-			$response->{'merchant-account-id'} = $this->json->{'payment'}->{'merchant-account-id'}->{'value'};
-		}
-		$requestedAmount = $this->json->{'payment'}->{'requested-amount'};
-		if (is_object($requestedAmount)) {
-			$response->{'currency'} = $requestedAmount->{'currency'};
-			$response->{'requested-amount'} = $requestedAmount->{'value'};
-		}
-
-		return $response;
-	}
-
-	public function getData()
+    public function getDataForDetails()
     {
-        // TODO: Implement getData() method.
+        $response = $this->payment;
+        if (!is_string($response->{'merchant-account-id'})) {
+            $response->{'merchant-account-id'} = $this->payment->{'merchant-account-id'}->{'value'};
+        }
+        $requestedAmount = $this->payment->{'requested-amount'};
+        if (is_object($requestedAmount)) {
+            $response->{'currency'} = $requestedAmount->{'currency'};
+            $response->{'requested-amount'} = $requestedAmount->{'value'};
+        }
+
+        return $response;
+    }
+
+    public function getData()
+    {
+        // Return Data
     }
 
     public function getRawData()
     {
-        // TODO: Implement getRawData() method.
+        // Return json raw data
     }
 }

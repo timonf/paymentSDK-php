@@ -283,4 +283,16 @@ class Config
 
         throw new UnconfiguredPaymentMethodException();
     }
+
+    public function getPaymentConfigForMaid($maid)
+    {
+        $paymentConfig = null;
+        /** @var PaymentMethodConfig $method */
+        foreach ($this->paymentMethodConfigs as $method) {
+            if ($maid == $method->getMerchantAccountId()) {
+                $paymentConfig = $method;
+            }
+        }
+        return $paymentConfig;
+    }
 }
