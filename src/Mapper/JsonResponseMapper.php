@@ -81,14 +81,19 @@ class JsonResponseMapper extends ResponseMapper
     private function checkResponse($payload)
     {
         $response = null;
-        if (key_exists('errors', $payload) || isset($payload->{'payment'}) && $payload->{'payment'}->{'transaction-state'} === 'failed') {
+        if (key_exists('errors', $payload)
+            || isset($payload->{'payment'}) && $payload->{'payment'}->{'transaction-state'} === 'failed') {
             $response = "error";
-        } else if (key_exists('payment-redirect-url', $payload)) {
-            $response = "interaction";
-        } else if ($payload->{'payment'}->{'transaction-state'} === 'success') {
-            $response = "success";
         } else {
-            throw new MalformedResponseException('Malformed response caught! Expected error, success or interaction response.');
+            if (key_exists('payment-redirect-url', $payload)) {
+                $response = "interaction";
+            } else {
+                if ($payload->{'payment'}->{'transaction-state'} === 'success') {
+                    $response = "success";
+                } else {
+                    throw new MalformedResponseException('Malformed response caught! Expected error, success or interaction response.');
+                }
+            }
         }
 
         return $response;
@@ -105,7 +110,7 @@ class JsonResponseMapper extends ResponseMapper
      */
     protected function validateSignature($responseBase64, $signatureBase64 = null, $merchantSecretKey = null)
     {
-        $signature = hash_hmac('sha256', base64_decode($responseBase64), $merchantSecretKey);
+        $signature = hash_hmac('sha256', $responseBase64, $merchantSecretKey, true);
         return hash_equals($signature, base64_decode($signatureBase64));
     }
 }
