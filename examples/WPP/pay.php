@@ -42,6 +42,7 @@ $transaction = new WPPTransaction();
 $transaction->setRedirect($redirectUrls);
 $transaction->setAmount($amount);
 $transaction->setAccountHolder($accountHolder);
+$transaction->setCreditorId('DE98ZZZ09999999999');
 
 // ### Transaction Service
 
